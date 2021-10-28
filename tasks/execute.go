@@ -1,37 +1,40 @@
 package tasks
 
 import (
+	"context"
 	"fmt"
-	svrConf "github.com/bianjieai/irita-sync/confs/server"
-	"github.com/bianjieai/irita-sync/handlers"
-	"github.com/bianjieai/irita-sync/libs/logger"
-	"github.com/bianjieai/irita-sync/libs/pool"
-	"github.com/bianjieai/irita-sync/models"
-	"github.com/bianjieai/irita-sync/utils"
+	"github.com/bianjieai/cosmos-sync/handlers"
+	"github.com/bianjieai/cosmos-sync/libs/logger"
+	"github.com/bianjieai/cosmos-sync/libs/pool"
+	"github.com/bianjieai/cosmos-sync/models"
+	"github.com/bianjieai/cosmos-sync/utils"
+	"github.com/bianjieai/cosmos-sync/utils/constant"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
 	"os"
+	"strings"
 	"time"
 )
 
-func (s *SyncTaskService) StartExecuteTask() {
+func (s *syncTaskService) StartExecuteTask() {
 	defer func() {
 		pool.ClosePool()
 	}()
 
 	var (
-		blockNumPerWorkerHandle = int64(svrConf.SvrConf.BlockNumPerWorkerHandle)
-		workerMaxSleepTime      = int64(svrConf.SvrConf.WorkerMaxSleepTime)
+		blockNumPerWorkerHandle = int64(s.conf.Server.BlockNumPerWorkerHandle)
+		workerMaxSleepTime      = int64(s.conf.Server.WorkerMaxSleepTime)
 	)
 	if workerMaxSleepTime <= 1*60 {
 		logger.Fatal("workerMaxSleepTime shouldn't less than 1 minute")
 	}
 
 	logger.Info("init execute task")
+	s.hostname, _ = os.Hostname()
 
 	// buffer channel to limit goroutine num
-	chanLimit := make(chan bool, svrConf.SvrConf.WorkerNumExecuteTask)
+	chanLimit := make(chan bool, s.conf.Server.WorkerNumExecuteTask)
 
 	for {
 		chanLimit <- true
@@ -40,19 +43,19 @@ func (s *SyncTaskService) StartExecuteTask() {
 	}
 }
 
-func (s *SyncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTime int64, chanLimit chan bool) {
-	var (
-		workerId, taskType     string
-		blockChainLatestHeight int64
-	)
-	genWorkerId := func() string {
-		// generate worker id use hostname@xxx
-		hostname, _ := os.Hostname()
-		return fmt.Sprintf("%v@%v", hostname, bson.NewObjectId().Hex())
-	}
+func (s *syncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTime int64, chanLimit chan bool) {
+	//var (
+	//	workerId, taskType     string
+	//	blockChainLatestHeight int64
+	//)
+	//genWorkerId := func() string {
+	//	// generate worker id use hostname@xxx
+	//	hostname, _ := os.Hostname()
+	//	return fmt.Sprintf("%v@%v", hostname, bson.NewObjectId().Hex())
+	//}
 
 	healthCheckQuit := make(chan bool)
-	workerId = genWorkerId()
+	//workerId = genWorkerId()
 	client := pool.GetClient()
 
 	defer func() {
@@ -80,7 +83,12 @@ func (s *SyncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTim
 	// take over sync task
 	// attempt to update status, worker_id and worker_logs
 	task := tasks[utils.RandInt(len(tasks))]
-	err = s.syncTaskModel.TakeOverTask(task, workerId)
+	s.TakeOverTaskAndExecute(task, client, healthCheckQuit, blockNumPerWorkerHandle)
+}
+func (s *syncTaskService) TakeOverTaskAndExecute(task models.SyncTask, client *pool.Client, healthCheckQuit chan bool, blockNumPerWorkerHandle int64) {
+	var taskType string
+	workerId := fmt.Sprintf("%v@%v", s.hostname, bson.NewObjectId().Hex())
+	err := s.syncTaskModel.TakeOverTask(task, workerId)
 	if err != nil {
 		if err == mgo.ErrNotFound {
 			// this task has been take over by other goroutine
@@ -162,8 +170,10 @@ func (s *SyncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTim
 		}
 
 		// if inProcessBlock > blockChainLatestHeight, should wait blockChainLatestHeight update
-		if taskType == models.SyncTaskTypeFollow && inProcessBlock > blockChainLatestHeight {
-			logger.Info("wait blockChain latest height update",
+		if taskType == models.SyncTaskTypeFollow &&
+			inProcessBlock+int64(s.conf.Server.BehindBlockNum) > blockChainLatestHeight {
+			logger.Info(fmt.Sprintf("wait blockChain latest height update, must interval %v block",
+				s.conf.Server.BehindBlockNum),
 				logger.Int64("curSyncedHeight", inProcessBlock-1),
 				logger.Int64("blockChainLatestHeight", blockChainLatestHeight))
 			time.Sleep(2 * time.Second)
@@ -173,10 +183,15 @@ func (s *SyncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTim
 		}
 
 		// parse data from block
-		blockDoc, txDocs, err := handlers.ParseBlockAndTxs(inProcessBlock, client)
+		blockDoc, txDocs, ops, err := handlers.ParseBlockAndTxs(inProcessBlock, client)
 		if err != nil {
-			logger.Error("Parse block fail", logger.Int64("block", inProcessBlock),
+			logger.Error("Parse block fail",
+				logger.Int64("height", inProcessBlock),
+				logger.String("errTag", utils.GetErrTag(err)),
 				logger.String("err", err.Error()))
+			//continue to assert task is valid
+			blockChainLatestHeight, isValid = assertTaskValid(task, blockNumPerWorkerHandle)
+			continue
 		}
 
 		// check task owner
@@ -194,9 +209,16 @@ func (s *SyncTaskService) executeTask(blockNumPerWorkerHandle, maxWorkerSleepTim
 				taskDoc.Status = models.SyncTaskStatusCompleted
 			}
 
-			err := saveDocsWithTxn(blockDoc, txDocs, taskDoc)
+			err := saveDocsWithTxn(blockDoc, txDocs, taskDoc, ops)
 			if err != nil {
-				logger.Error("save docs fail", logger.String("err", err.Error()))
+				if !strings.Contains(err.Error(), constant.ErrDbNotFindTransaction) {
+					logger.Error("save docs fail",
+						logger.Int64("height", inProcessBlock),
+						logger.String("err", err.Error()))
+					//continue to assert task is valid
+					blockChainLatestHeight, isValid = assertTaskValid(task, blockNumPerWorkerHandle)
+					continue
+				}
 			} else {
 				task.CurrentHeight = inProcessBlock
 			}
@@ -279,7 +301,7 @@ func getBlockChainLatestHeight() (int64, error) {
 	defer func() {
 		client.Release()
 	}()
-	status, err := client.Status()
+	status, err := client.Status(context.Background())
 	if err != nil {
 		return 0, err
 	}
@@ -287,7 +309,7 @@ func getBlockChainLatestHeight() (int64, error) {
 	return status.SyncInfo.LatestBlockHeight, nil
 }
 
-func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models.SyncTask) error {
+func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models.SyncTask, opsDoc []txn.Op) error {
 	var (
 		ops, binanceTxsOps []txn.Op
 	)
@@ -297,7 +319,7 @@ func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models
 	}
 
 	blockOp := txn.Op{
-		C:      models.CollectionNameBlock,
+		C:      models.BlockModel.Name(),
 		Id:     bson.NewObjectId(),
 		Insert: blockDoc,
 	}
@@ -307,7 +329,7 @@ func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models
 		binanceTxsOps = make([]txn.Op, 0, length)
 		for _, v := range txDocs {
 			op := txn.Op{
-				C:      models.CollectionNameBinanceTx,
+				C:      models.TxModel.Name(),
 				Id:     bson.NewObjectId(),
 				Insert: v,
 			}
@@ -316,7 +338,7 @@ func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models
 	}
 
 	updateOp := txn.Op{
-		C:      models.CollectionNameSyncTask,
+		C:      models.SyncTaskModel.Name(),
 		Id:     taskDoc.ID,
 		Assert: txn.DocExists,
 		Update: bson.M{
@@ -330,6 +352,9 @@ func saveDocsWithTxn(blockDoc *models.Block, txDocs []*models.Tx, taskDoc models
 
 	ops = make([]txn.Op, 0, len(binanceTxsOps)+2)
 	ops = append(append(ops, blockOp, updateOp), binanceTxsOps...)
+	if len(opsDoc) > 0 {
+		ops = append(ops, opsDoc...)
+	}
 
 	if len(ops) > 0 {
 		err := models.Txn(ops)

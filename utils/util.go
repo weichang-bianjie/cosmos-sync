@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/bianjieai/irita-sync/libs/logger"
+	"github.com/bianjieai/cosmos-sync/libs/logger"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -13,6 +13,21 @@ import (
 
 func BuildHex(bytes []byte) string {
 	return strings.ToUpper(hex.EncodeToString(bytes))
+}
+
+func ConvertErr(height int64, txHash, errTag string, err error) error {
+	return fmt.Errorf("%v-%v-%v-%v", err.Error(), errTag, height, txHash)
+}
+
+func CheckSkipErr(err error, tag string) bool {
+	return strings.Contains(err.Error(), tag)
+}
+func GetErrTag(err error) string {
+	slice := strings.Split(err.Error(), "-")
+	if len(slice) == 4 {
+		return slice[1]
+	}
+	return ""
 }
 
 func Min(x, y int64) int64 {
@@ -49,6 +64,10 @@ func RoundFloat(num float64, bit int) (i float64) {
 func MarshalJsonIgnoreErr(v interface{}) string {
 	data, _ := json.Marshal(v)
 	return string(data)
+}
+
+func UnMarshalJsonIgnoreErr(data string, v interface{}) {
+	json.Unmarshal([]byte(data), &v)
 }
 
 func ConvStrToInt(str string) (int, error) {

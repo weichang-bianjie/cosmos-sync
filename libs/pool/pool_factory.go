@@ -3,9 +3,9 @@ package pool
 import (
 	"context"
 	"fmt"
-	"github.com/bianjieai/irita-sync/libs/logger"
+	"github.com/bianjieai/cosmos-sync/libs/logger"
 	commonPool "github.com/jolestar/go-commons-pool"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
+	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	"math/rand"
 	"sync"
 )
@@ -16,18 +16,22 @@ type (
 	}
 	EndPoint struct {
 		Address   string
-		Network   string
 		Available bool
 	}
 	Client struct {
 		Id string
-		rpcclient.Client
+		*rpcclient.HTTP
 	}
 )
 
 func (f *PoolFactory) MakeObject(ctx context.Context) (*commonPool.PooledObject, error) {
 	endpoint := f.GetEndPoint()
-	return commonPool.NewPooledObject(newClient(endpoint.Address)), nil
+	c, err := newClient(endpoint.Address)
+	if err != nil {
+		return nil, err
+	} else {
+		return commonPool.NewPooledObject(c), nil
+	}
 }
 
 func (f *PoolFactory) DestroyObject(ctx context.Context, object *commonPool.PooledObject) error {
@@ -48,6 +52,13 @@ func (f *PoolFactory) ValidateObject(ctx context.Context, object *commonPool.Poo
 			endPoint.Available = true
 			f.peersMap.Store(c.Id, endPoint)
 		}
+		return false
+	}
+	stat, err := c.Status(ctx)
+	if err != nil {
+		return false
+	}
+	if stat.SyncInfo.CatchingUp {
 		return false
 	}
 	return true
@@ -91,11 +102,12 @@ func (f *PoolFactory) GetEndPoint() EndPoint {
 	return EndPoint{}
 }
 
-func newClient(nodeUrl string) *Client {
+func newClient(nodeUrl string) (*Client, error) {
+	client, err := rpcclient.New(nodeUrl, "/websocket")
 	return &Client{
-		Id:     generateId(nodeUrl),
-		Client: rpcclient.NewHTTP(nodeUrl, "/websocket"),
-	}
+		Id:   generateId(nodeUrl),
+		HTTP: client,
+	}, err
 }
 
 func generateId(address string) string {

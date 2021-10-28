@@ -2,9 +2,9 @@ package tasks
 
 import (
 	"fmt"
-	conf "github.com/bianjieai/irita-sync/confs/server"
-	"github.com/bianjieai/irita-sync/libs/logger"
-	"github.com/bianjieai/irita-sync/models"
+	"github.com/bianjieai/cosmos-sync/config"
+	"github.com/bianjieai/cosmos-sync/libs/logger"
+	"github.com/bianjieai/cosmos-sync/models"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
 	"time"
@@ -12,26 +12,39 @@ import (
 
 const maxRecordNumForBatchInsert = 1000
 
-type SyncTaskService struct {
-	syncTaskModel models.SyncTask
+type SyncTask interface {
+	StartCreateTask()
+	StartExecuteTask()
 }
 
-func (s *SyncTaskService) StartCreateTask() {
-	blockNumPerWorkerHandle := int64(conf.SvrConf.BlockNumPerWorkerHandle)
+func NewSyncTask(config *config.Config) SyncTask {
+	return &syncTaskService{
+		conf: config,
+	}
+}
+
+type syncTaskService struct {
+	syncTaskModel models.SyncTask
+	hostname      string
+	conf          *config.Config
+}
+
+func (s *syncTaskService) StartCreateTask() {
+	blockNumPerWorkerHandle := int64(s.conf.Server.BlockNumPerWorkerHandle)
 
 	logger.Info("init create task")
 
 	// buffer channel to limit goroutine num
-	chanLimit := make(chan bool, conf.SvrConf.WorkerNumCreateTask)
+	chanLimit := make(chan bool, s.conf.Server.WorkerNumCreateTask)
 
 	for {
 		chanLimit <- true
 		go s.createTask(blockNumPerWorkerHandle, chanLimit)
-		time.Sleep(time.Duration(1) * time.Minute)
+		time.Sleep(time.Duration(s.conf.Server.SleepTimeCreateTaskWorker) * time.Second)
 	}
 }
 
-func (s *SyncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit chan bool) {
+func (s *syncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit chan bool) {
 	var (
 		syncIrisTasks     []*models.SyncTask
 		ops               []txn.Op
@@ -57,17 +70,16 @@ func (s *SyncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit ch
 		logger.Error("Query sync task failed", logger.String("err", err.Error()))
 		return
 	}
+	blockChainLatestHeight, err := getBlockChainLatestHeight()
+	if err != nil {
+		logger.Error("Get current block height failed", logger.String("err", err.Error()))
+		return
+	}
 	if len(validFollowTasks) == 0 {
 		// get max end_height from sync_task
 		maxEndHeight, err := s.syncTaskModel.GetMaxBlockHeight()
 		if err != nil {
 			logger.Error("Get max endBlock failed", logger.String("err", err.Error()))
-			return
-		}
-
-		blockChainLatestHeight, err := getBlockChainLatestHeight()
-		if err != nil {
-			logger.Error("Get current block height failed", logger.String("err", err.Error()))
 			return
 		}
 
@@ -94,12 +106,6 @@ func (s *SyncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit ch
 			followedHeight = followTask.StartHeight - 1
 		}
 
-		blockChainLatestHeight, err := getBlockChainLatestHeight()
-		if err != nil {
-			logger.Error("Get blockChain latest height failed", logger.String("err", err.Error()))
-			return
-		}
-
 		if followedHeight+blockNumPerWorkerHandle <= blockChainLatestHeight {
 			syncIrisTasks = createCatchUpTask(followedHeight, blockNumPerWorkerHandle, blockChainLatestHeight)
 
@@ -118,7 +124,7 @@ func (s *SyncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit ch
 			objectId := bson.NewObjectId()
 			v.ID = objectId
 			op := txn.Op{
-				C:      models.CollectionNameSyncTask,
+				C:      models.SyncTaskModel.Name(),
 				Id:     objectId,
 				Assert: nil,
 				Insert: v,
@@ -130,7 +136,7 @@ func (s *SyncTaskService) createTask(blockNumPerWorkerHandle int64, chanLimit ch
 
 	if invalidFollowTask.ID.Valid() {
 		op := txn.Op{
-			C:  models.CollectionNameSyncTask,
+			C:  models.SyncTaskModel.Name(),
 			Id: invalidFollowTask.ID,
 			Assert: bson.M{
 				"current_height":   invalidFollowTask.CurrentHeight,
@@ -190,7 +196,7 @@ func createCatchUpTask(maxEndHeight, blockNumPerWorker, currentBlockHeight int64
 	return syncTasks
 }
 
-func (s *SyncTaskService) assertAllCatchUpTaskFinished() (bool, error) {
+func (s *syncTaskService) assertAllCatchUpTaskFinished() (bool, error) {
 	var (
 		allCatchUpTaskFinished = false
 	)
