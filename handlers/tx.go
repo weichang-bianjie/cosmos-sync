@@ -31,7 +31,7 @@ func InitRouter(conf *config.Config) {
 	router := msgparser.RegisteRouter()
 	_parser = msgparser.NewMsgParser(router)
 
-	initEvmosPrefix()
+	initBech32Prefix(conf.Server.Bech32AccPrefix)
 	//ibc-zone
 	if filterMsgType := models.GetSrvConf().SupportTypes; filterMsgType != "" {
 		msgTypes := strings.Split(filterMsgType, ",")

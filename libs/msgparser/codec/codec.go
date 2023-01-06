@@ -10,8 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	"github.com/tendermint/tendermint/types"
-
-	enccodec "github.com/evmos/ethermint/encoding/codec"
+	//enccodec "github.com/evmos/ethermint/encoding/codec"
 )
 
 var (
@@ -37,9 +36,9 @@ func MakeEncodingConfig() {
 		TxConfig:          txCfg,
 		Amino:             cdc,
 	}
-	enccodec.RegisterLegacyAminoCodec(encodecfg.Amino)
+	//enccodec.RegisterLegacyAminoCodec(encodecfg.Amino)
 	moduleBasics.RegisterLegacyAminoCodec(encodecfg.Amino)
-	enccodec.RegisterInterfaces(encodecfg.InterfaceRegistry)
+	//enccodec.RegisterInterfaces(encodecfg.InterfaceRegistry)
 	moduleBasics.RegisterInterfaces(encodecfg.InterfaceRegistry)
 }
 

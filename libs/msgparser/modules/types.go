@@ -2,6 +2,7 @@ package msgs
 
 import (
 	models "github.com/bianjieai/cosmos-sync/libs/msgparser/types"
+	ics721transfer "github.com/bianjieai/nft-transfer/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	ibctransfer "github.com/cosmos/ibc-go/v5/modules/apps/transfer/types"
 	ibcclient "github.com/cosmos/ibc-go/v5/modules/core/02-client/types"
@@ -37,6 +38,7 @@ const (
 
 	MsgTypeRecvPacket  = "recv_packet"
 	MsgTypeIBCTransfer = "transfer"
+	MsgTypeNftTransfer = "nft-transfer"
 )
 
 type (
@@ -52,9 +54,11 @@ type (
 
 	Coins []*Coin
 
-	FungibleTokenPacketData = ibctransfer.FungibleTokenPacketData
-	MsgRecvPacket           = ibc.MsgRecvPacket
-	MsgTransfer             = ibctransfer.MsgTransfer
+	NonFungibleTokenPacketData = ics721transfer.NonFungibleTokenPacketData
+	NftMsgTransfer             = ics721transfer.MsgTransfer
+	FungibleTokenPacketData    = ibctransfer.FungibleTokenPacketData
+	MsgRecvPacket              = ibc.MsgRecvPacket
+	MsgTransfer                = ibctransfer.MsgTransfer
 
 	MsgCreateClient       = ibcclient.MsgCreateClient
 	MsgUpdateClient       = ibcclient.MsgUpdateClient

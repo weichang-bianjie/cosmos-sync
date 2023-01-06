@@ -10,13 +10,20 @@ import (
 )
 
 func loadPacket(packet icorechannel.Packet) Packet {
+	var data interface{}
+	switch packet.SourcePort {
+	case "nft-transfer": //todo ensure ics721 port
+		data = UnmarshalNftPacketData(packet.GetData())
+	default:
+		data = UnmarshalPacketData(packet.GetData())
+	}
 	return Packet{
 		Sequence:           int64(packet.Sequence),
 		SourcePort:         packet.SourcePort,
 		SourceChannel:      packet.SourceChannel,
 		DestinationPort:    packet.DestinationPort,
 		DestinationChannel: packet.DestinationChannel,
-		Data:               UnmarshalPacketData(packet.GetData()),
+		Data:               data,
 		TimeoutTimestamp:   int64(packet.TimeoutTimestamp),
 		TimeoutHeight:      loadHeight(packet.TimeoutHeight)}
 }
@@ -25,6 +32,19 @@ func UnmarshalPacketData(bytesdata []byte) PacketData {
 	var (
 		packetData FungibleTokenPacketData
 		data       PacketData
+	)
+	err := cdc.GetMarshaler().UnmarshalJSON(bytesdata, &packetData)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	utils.UnMarshalJsonIgnoreErr(utils.MarshalJsonIgnoreErr(packetData), &data)
+	return data
+}
+
+func UnmarshalNftPacketData(bytesdata []byte) NftPacketData {
+	var (
+		packetData NonFungibleTokenPacketData
+		data       NftPacketData
 	)
 	err := cdc.GetMarshaler().UnmarshalJSON(bytesdata, &packetData)
 	if err != nil {
@@ -72,14 +92,14 @@ type Height struct {
 
 // Packet defines a type that carries data across different chains through IBC
 type Packet struct {
-	Sequence           int64      `bson:"sequence"`
-	SourcePort         string     `bson:"source_port"`
-	SourceChannel      string     `bson:"source_channel"`
-	DestinationPort    string     `bson:"destination_port"`
-	DestinationChannel string     `bson:"destination_channel"`
-	Data               PacketData `bson:"data"`
-	TimeoutHeight      Height     `bson:"timeout_height"`
-	TimeoutTimestamp   int64      `bson:"timeout_timestamp"`
+	Sequence           int64       `bson:"sequence"`
+	SourcePort         string      `bson:"source_port"`
+	SourceChannel      string      `bson:"source_channel"`
+	DestinationPort    string      `bson:"destination_port"`
+	DestinationChannel string      `bson:"destination_channel"`
+	Data               interface{} `bson:"data"`
+	TimeoutHeight      Height      `bson:"timeout_height"`
+	TimeoutTimestamp   int64       `bson:"timeout_timestamp"`
 }
 
 //FungibleTokenPacketData
@@ -88,4 +108,14 @@ type PacketData struct {
 	Amount   string `bson:"amount" json:"amount"`
 	Sender   string `bson:"sender" json:"sender"`
 	Receiver string `bson:"receiver" json:"receiver"`
+}
+
+//NonFungibleTokenPacketData
+type NftPacketData struct {
+	ClassId   string   `bson:"denom" json:"denom"`
+	ClassUri  string   `bson:"amount" json:"amount"`
+	TokenIds  []string `bson:"token_ids" json:"token_ids"`
+	TokenUris []string `bson:"token_uris" json:"token_uris"`
+	Sender    string   `bson:"sender" json:"sender"`
+	Receiver  string   `bson:"receiver" json:"receiver"`
 }
