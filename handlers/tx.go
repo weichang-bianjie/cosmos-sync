@@ -227,6 +227,26 @@ func parseTx(txBytes types.Tx, txResult *ctypes.ResultTx, block *types.Block, in
 					msgDocInfo.DocTxMsg.Msg = timeOutMsg
 				}
 			}
+		case MsgTypeNftTransfer:
+			if ibcNftTranferMsg, ok := msgDocInfo.DocTxMsg.Msg.(*ibc.DocNftMsgTransfer); ok {
+				if val, exist := eventsIndexMap[uint32(i)]; exist {
+					ibcNftTranferMsg.PacketId = buildPacketId(val.Events)
+					msgDocInfo.DocTxMsg.Msg = ibcNftTranferMsg
+				}
+				if _conf.Server.IgnoreIbcHeader {
+					for id, one := range docTx.EventsNew {
+						if one.MsgIndex == uint32(i) {
+							docTx.EventsNew[id].Events = hookEvents(docTx.EventsNew[id].Events, removePacketDataHexOfIbcTxEvents)
+						}
+					}
+				}
+
+			} else {
+				logger.Warn("ibc nft transfer handler packet_id failed", logger.String("errTag", "TxMsg"),
+					logger.String("txhash", txHash),
+					logger.Int("msg_index", i),
+					logger.Int64("height", block.Height))
+			}
 		}
 		if i == 0 {
 			docTx.Type = msgDocInfo.DocTxMsg.Type
