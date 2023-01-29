@@ -112,8 +112,8 @@ type PacketData struct {
 
 //NonFungibleTokenPacketData
 type NftPacketData struct {
-	ClassId   string   `bson:"denom" json:"denom"`
-	ClassUri  string   `bson:"amount" json:"amount"`
+	ClassId   string   `bson:"class_id" json:"class_id"`
+	ClassUri  string   `bson:"class_uri" json:"class_uri"`
 	ClassData string   `bson:"class_data" json:"class_data"`
 	TokenIds  []string `bson:"token_ids" json:"token_ids"`
 	TokenUris []string `bson:"token_uris" json:"token_uris"`

@@ -63,6 +63,8 @@ func (parser msgParser) MsgType(v types.SdkMsg) string {
 		return MsgTypeRecvPacket
 	case *MsgTransfer:
 		return MsgTypeIBCTransfer
+	case *NftMsgTransfer:
+		return MsgTypeNftTransfer
 	case *MsgUpdateClient:
 		return MsgTypeUpdateClient
 	case *MsgChannelOpenConfirm:
