@@ -3,7 +3,7 @@ module github.com/bianjieai/cosmos-sync
 go 1.18
 
 require (
-	github.com/bianjieai/nft-transfer v1.0.0-beta
+	github.com/bianjieai/nft-transfer v1.1.0-beta
 	github.com/cosmos/cosmos-sdk v0.46.5
 	github.com/cosmos/ibc-go/v5 v5.0.1
 	//github.com/evmos/ethermint v0.6.1-0.20220919141022-34226aa7b1fa
@@ -64,6 +64,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/gofuzz v1.1.1-0.20200604201612-c04b05f3adfa // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect

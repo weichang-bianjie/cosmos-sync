@@ -15,6 +15,7 @@ type DocNftMsgTransfer struct {
 	Receiver         string   `bson:"receiver"`
 	TimeoutHeight    Height   `bson:"timeout_height"`
 	TimeoutTimestamp int64    `bson:"timeout_timestamp"`
+	Memo             string   `bson:"memo"`
 }
 
 func (m *DocNftMsgTransfer) GetType() string {
@@ -31,6 +32,7 @@ func (m *DocNftMsgTransfer) BuildMsg(v interface{}) {
 	m.TimeoutHeight = loadHeight(msg.TimeoutHeight)
 	m.ClassId = msg.ClassId
 	m.TokenIds = msg.TokenIds
+	m.Memo = msg.Memo
 }
 
 func (m *DocNftMsgTransfer) HandleTxMsg(v SdkMsg) MsgDocInfo {

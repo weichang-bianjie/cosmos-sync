@@ -114,8 +114,11 @@ type PacketData struct {
 type NftPacketData struct {
 	ClassId   string   `bson:"denom" json:"denom"`
 	ClassUri  string   `bson:"amount" json:"amount"`
+	ClassData string   `bson:"class_data" json:"class_data"`
 	TokenIds  []string `bson:"token_ids" json:"token_ids"`
 	TokenUris []string `bson:"token_uris" json:"token_uris"`
+	TokenData []string `bson:"token_data" json:"token_data"`
 	Sender    string   `bson:"sender" json:"sender"`
 	Receiver  string   `bson:"receiver" json:"receiver"`
+	Memo      string   `bson:"memo" json:"memo"`
 }
