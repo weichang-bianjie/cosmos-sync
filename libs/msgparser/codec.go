@@ -8,5 +8,11 @@ import (
 
 func AdaptEthermintEncodingConfig() {
 	moduleBasics := module.NewBasicManager(commoncodec.AppModules...)
-	commoncodec.Encodecfg = encoding.MakeConfig(moduleBasics)
+	encodeCfg := encoding.MakeConfig(moduleBasics)
+	commoncodec.Encodecfg = commoncodec.EncodingConfig{
+		InterfaceRegistry: encodeCfg.InterfaceRegistry,
+		Amino:             encodeCfg.Amino,
+		TxConfig:          encodeCfg.TxConfig,
+		Marshaler:         encodeCfg.Codec,
+	}
 }

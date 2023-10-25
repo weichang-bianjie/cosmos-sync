@@ -10,6 +10,9 @@ import (
 	"github.com/bianjieai/cosmos-sync/models"
 	"github.com/bianjieai/cosmos-sync/utils"
 	"github.com/bianjieai/cosmos-sync/utils/constant"
+	types2 "github.com/cometbft/cometbft/abci/types"
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/cometbft/cometbft/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	commonparser "github.com/kaifei-bianjie/common-parser"
 	"github.com/kaifei-bianjie/common-parser/codec"
@@ -21,9 +24,6 @@ import (
 	"github.com/kaifei-bianjie/irismod-parser/modules/evm"
 	"github.com/kaifei-bianjie/irismod-parser/modules/mt"
 	. "github.com/kaifei-bianjie/tibc-mod-parser/modules"
-	types2 "github.com/tendermint/tendermint/abci/types"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	"github.com/tendermint/tendermint/types"
 	"golang.org/x/net/context"
 	"strings"
 	"time"
@@ -333,7 +333,7 @@ func parseTx(txBytes types.Tx, txResult *types2.ResponseDeliverTx, block *types.
 			if _conf.Server.IgnoreIbcHeader {
 				updateClientMsg, ok := msgDocInfo.DocTxMsg.Msg.(*ibc.DocMsgUpdateClient)
 				if ok {
-					updateClientMsg.Header = "ignore ibc header info"
+					updateClientMsg.ClientMessage = "ignore ibc ClientMessage info"
 					msgDocInfo.DocTxMsg.Msg = updateClientMsg
 				}
 				for id, one := range docTx.EventsNew {
@@ -349,6 +349,26 @@ func parseTx(txBytes types.Tx, txResult *types2.ResponseDeliverTx, block *types.
 					timeOutMsg.ProofUnreceived = "ignore ibc ProofUnreceived info"
 					msgDocInfo.DocTxMsg.Msg = timeOutMsg
 				}
+			}
+		case MsgTypeNftTransfer:
+			if ibcNftTranferMsg, ok := msgDocInfo.DocTxMsg.Msg.(*ibc.DocNftMsgTransfer); ok {
+				if val, exist := eventsIndexMap[uint32(i)]; exist {
+					ibcNftTranferMsg.PacketId = buildPacketId(val.Events)
+					msgDocInfo.DocTxMsg.Msg = ibcNftTranferMsg
+				}
+				if _conf.Server.IgnoreIbcHeader {
+					for id, one := range docTx.EventsNew {
+						if one.MsgIndex == uint32(i) {
+							docTx.EventsNew[id].Events = hookEvents(docTx.EventsNew[id].Events, removePacketDataHexOfIbcTxEvents)
+						}
+					}
+				}
+
+			} else {
+				logger.Warn("ibc nft transfer handler packet_id failed", logger.String("errTag", "TxMsg"),
+					logger.String("txhash", txHash),
+					logger.Int("msg_index", i),
+					logger.Int64("height", block.Height))
 			}
 		}
 		if i == 0 {

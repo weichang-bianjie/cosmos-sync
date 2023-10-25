@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/bianjieai/cosmos-sync/libs/logger"
+	rpcclient "github.com/cometbft/cometbft/rpc/client/http"
 	commonPool "github.com/jolestar/go-commons-pool"
-	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	"math/rand"
 	"sync"
 )
